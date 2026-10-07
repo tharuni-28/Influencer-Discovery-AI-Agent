@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Influencer Discovery AI Agent</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans">
+
+  <!-- Header -->
+  <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-30">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
+          <i class="fa-solid fa-wand-magic-sparkles text-lg"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight">CreatorRadar AI</h1>
+          <p class="text-xs text-slate-400">Autonomous Discovery & Outreach CRM</p>
+        </div>
+      </div>
+      
+      <!-- Tab Navigation -->
+      <nav class="flex space-x-2 bg-slate-800/80 p-1 rounded-xl">
+        <button id="tabSearchBtn" onclick="switchTab('search')" class="px-4 py-1.5 rounded-lg text-sm font-medium transition bg-indigo-600 text-white shadow">
+          <i class="fa-solid fa-magnifying-glass mr-2"></i>Search
+        </button>
+        <button id="tabCrmBtn" onclick="switchTab('crm')" class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-slate-400 hover:text-white">
+          <i class="fa-solid fa-bookmark mr-2"></i>Saved CRM (<span id="crmCount">0</span>)
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-6xl mx-auto px-4 py-8 flex-1 w-full">
+
+    <!-- SEARCH VIEW -->
+    <section id="searchSection" class="space-y-8">
+      <!-- Search Input Area -->
+      <div class="max-w-2xl mx-auto text-center space-y-4">
+        <h2 class="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+          Discover Creators with Natural Language
+        </h2>
+        <p class="text-slate-400 text-sm">
+          Prompt by niche, region, or platform (e.g., <em>"Find 3 popular Tamil racing YouTubers"</em> or <em>"Top fitness influencers on Instagram"</em>).
+        </p>
+
+        <form id="searchForm" onsubmit="handleSearch(event)" class="relative mt-6">
+          <div class="flex items-center rounded-2xl bg-slate-900 border border-slate-700/80 focus-within:border-indigo-500 shadow-xl overflow-hidden px-4 py-2 transition">
+            <i class="fa-solid fa-sparkles text-indigo-400 mr-3 text-lg"></i>
+            <input
+              id="promptInput"
+              type="text"
+              placeholder="e.g. Find 3 fitness creators in Mumbai who post gym workouts"
+              class="w-full bg-transparent text-slate-100 placeholder-slate-500 focus:outline-none text-sm md:text-base py-2"
+              required
+            />
+            <button
+              type="submit"
+              id="submitBtn"
+              class="ml-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-5 py-2.5 rounded-xl transition flex items-center space-x-2 shrink-0 shadow-md shadow-indigo-600/30"
+            >
+              <span>Search</span>
+              <i class="fa-solid fa-arrow-right text-xs"></i>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Loading Spinner -->
+      <div id="loadingIndicator" class="hidden text-center py-16 space-y-3">
+        <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-indigo-500 border-t-transparent"></div>
+        <p class="text-slate-400 text-sm animate-pulse">Browsing the web with Tavily & extracting with Google AI...</p>
+      </div>
+
+      <!-- Error Box -->
+      <div id="errorBox" class="hidden max-w-xl mx-auto p-4 rounded-xl bg-red-950/60 border border-red-800 text-red-300 text-sm text-center"></div>
+
+      <!-- Search Results Grid -->
+      <div id="resultsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+    </section>
+
+    <!-- CRM VIEW -->
+    <section id="crmSection" class="hidden space-y-6">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div>
+          <h2 class="text-2xl font-bold">Saved Creators (CRM)</h2>
+          <p class="text-xs text-slate-400">Saved profiles stored in your SQLite database.</p>
+        </div>
+        <button onclick="loadCrmProfiles()" class="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg text-slate-300 transition">
+          <i class="fa-solid fa-arrows-rotate mr-1"></i> Refresh
+        </button>
+      </div>
+
+      <div id="crmEmptyState" class="hidden text-center py-16 text-slate-500">
+        <i class="fa-regular fa-folder-open text-4xl mb-3"></i>
+        <p>No saved influencers yet. Discover and save some from the search tab!</p>
+      </div>
+
+      <div id="crmGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+    </section>
+
+  </main>
+
+  <script>
+    const API_BASE = "";
+
+    // URL Formatter Helper Function
+    function formatProfileUrl(creator) {
+      const url = creator.url || creator.profile_url;
+      // If AI provided a real URL, use it
+      if (url && url.startsWith("http") && url !== "#") {
+          return url;
+      }
+      
+      // Otherwise, construct one based on handle/platform
+      const handle = (creator.handle || creator.channel || "").replace(/[@\s]/g, "").trim();
+      const platform = (creator.platform || "").toLowerCase();
+
+      if (platform.includes("youtube")) {
+          return `https://www.youtube.com/@${handle}`;
+      }
+      if (platform.includes("instagram")) {
+          return `https://www.instagram.com/${handle}`;
+      }
+      if (platform.includes("twitter") || platform.includes("x")) {
+          return `https://x.com/${handle}`;
+      }
+
+      // Fallback Google Search
+      return `https://www.google.com/search?q=${encodeURIComponent((creator.name || handle) + ' ' + platform)}`;
+    }
+
+    // Tab Switching
+    function switchTab(tab) {
+      const searchSec = document.getElementById("searchSection");
+      const crmSec = document.getElementById("crmSection");
+      const searchBtn = document.getElementById("tabSearchBtn");
+      const crmBtn = document.getElementById("tabCrmBtn");
+
+      if (tab === "search") {
+        searchSec.classList.remove("hidden");
+        crmSec.classList.add("hidden");
+        searchBtn.className = "px-4 py-1.5 rounded-lg text-sm font-medium transition bg-indigo-600 text-white shadow";
+        crmBtn.className = "px-4 py-1.5 rounded-lg text-sm font-medium transition text-slate-400 hover:text-white";
+      } else {
+        searchSec.classList.add("hidden");
+        crmSec.classList.remove("hidden");
+        crmBtn.className = "px-4 py-1.5 rounded-lg text-sm font-medium transition bg-indigo-600 text-white shadow";
+        searchBtn.className = "px-4 py-1.5 rounded-lg text-sm font-medium transition text-slate-400 hover:text-white";
+        loadCrmProfiles();
+      }
+    }
+
+    // Search Trigger
+    async function handleSearch(event) {
+      event.preventDefault();
+      const prompt = document.getElementById("promptInput").value.trim();
+      if (!prompt) return;
+
+      const loader = document.getElementById("loadingIndicator");
+      const errorBox = document.getElementById("errorBox");
+      const grid = document.getElementById("resultsGrid");
+      const submitBtn = document.getElementById("submitBtn");
+
+      grid.innerHTML = "";
+      errorBox.classList.add("hidden");
+      loader.classList.remove("hidden");
+      submitBtn.disabled = true;
+
+      try {
+        const response = await fetch(`${API_BASE}/api/search`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.detail || "Failed to search influencers");
+        }
+
+        const data = await response.json();
+        const list = Array.isArray(data) ? data : (data.influencers || []);
+
+        if (list.length === 0) {
+          errorBox.textContent = "No influencers found matching that criteria. Try a slightly broader prompt.";
+          errorBox.classList.remove("hidden");
+        } else {
+          renderSearchResults(list);
+        }
+      } catch (err) {
+        errorBox.textContent = `Error: ${err.message}`;
+        errorBox.classList.remove("hidden");
+      } finally {
+        loader.classList.add("hidden");
+        submitBtn.disabled = false;
+      }
+    }
+
+    // Render Cards in Search
+    function renderSearchResults(influencers) {
+      const grid = document.getElementById("resultsGrid");
+      grid.innerHTML = influencers.map((inf, idx) => {
+        const name = inf.name || "Unknown Creator";
+        const handle = inf.handle || inf.channel || "@creator";
+        const platform = inf.platform || "Social Media";
+        const followers = inf.followers || "Not specified";
+        const niche = inf.niche || inf.bio || "Content Creator";
+        
+        // Dynamically build the profile URL using our new function
+        const profileUrl = formatProfileUrl(inf);
+
+        return `
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between hover:border-slate-700 transition shadow-lg">
+            <div>
+              <div class="flex items-start justify-between">
+                <div>
+                  <h3 class="font-bold text-lg text-white">${name}</h3>
+                  <p class="text-xs text-indigo-400 font-mono mt-0.5">${handle}</p>
+                </div>
+                <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+                  ${platform}
+                </span>
+              </div>
+
+              <div class="mt-4 flex items-center space-x-2 text-xs text-slate-400">
+                <i class="fa-solid fa-users text-slate-500"></i>
+                <span>${followers}</span>
+              </div>
+
+              <p class="text-xs text-slate-300 mt-3 line-clamp-3 leading-relaxed">
+                ${niche}
+              </p>
+            </div>
+
+            <div class="mt-5 pt-4 border-t border-slate-800 flex items-center justify-between">
+              <a href="${profileUrl}" target="_blank" rel="noopener noreferrer" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center">
+                View Profile <i class="fa-solid fa-arrow-up-right-from-square ml-1 text-[10px]"></i>
+              </a>
+              <button 
+                id="saveBtn-${idx}"
+                onclick='saveToCrm(${JSON.stringify(inf).replace(/'/g, "&apos;")}, "saveBtn-${idx}")' 
+                class="px-3 py-1.5 rounded-lg bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600 hover:text-white border border-indigo-500/30 text-xs font-medium transition flex items-center">
+                <i class="fa-regular fa-bookmark mr-1.5"></i> Save
+              </button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    // Save Influencer to CRM API
+    async function saveToCrm(influencer, buttonId) {
+      const btn = document.getElementById(buttonId);
+      const originalText = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin mr-1"></i> Saving...`;
+
+      const payload = {
+        name: influencer.name || "Unknown",
+        handle: influencer.handle || influencer.channel || "@creator",
+        platform: influencer.platform || "Platform",
+        followers: influencer.followers || "Not specified",
+        niche: influencer.niche || influencer.bio || "Content Creator",
+        url: formatProfileUrl(influencer) // Save the dynamically generated URL to the database
+      };
+
+      try {
+        const response = await fetch(`${API_BASE}/api/crm`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error("Could not save to CRM");
+
+        btn.className = "px-3 py-1.5 rounded-lg bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 text-xs font-medium cursor-default";
+        btn.innerHTML = `<i class="fa-solid fa-check mr-1.5"></i> Saved`;
+        updateCrmCount();
+      } catch (err) {
+        alert("Failed to save: " + err.message);
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+      }
+    }
+
+    // Fetch and Load Saved Profiles
+    async function loadCrmProfiles() {
+      const grid = document.getElementById("crmGrid");
+      const empty = document.getElementById("crmEmptyState");
+      grid.innerHTML = `<div class="col-span-full text-center py-8 text-slate-400"><i class="fa-solid fa-spinner animate-spin mr-2"></i> Loading saved creators...</div>`;
+
+      try {
+        const response = await fetch(`${API_BASE}/api/crm`);
+        const list = await response.json();
+
+        updateCrmCount(list.length);
+
+        if (!list || list.length === 0) {
+          grid.innerHTML = "";
+          empty.classList.remove("hidden");
+          return;
+        }
+
+        empty.classList.add("hidden");
+        grid.innerHTML = list.map(item => {
+          // Use the formatter for saved cards too in case old data has empty URLs
+          const profileUrl = formatProfileUrl(item);
+
+          return `
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between">
+            <div>
+              <div class="flex items-start justify-between">
+                <div>
+                  <h3 class="font-bold text-white text-base">${item.name}</h3>
+                  <p class="text-xs text-indigo-400 font-mono">${item.handle}</p>
+                </div>
+                <span class="px-2 py-0.5 text-[11px] rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                  ${item.platform}
+                </span>
+              </div>
+              <p class="text-xs text-slate-400 mt-2"><i class="fa-solid fa-users mr-1.5 text-slate-500"></i> ${item.followers}</p>
+              <p class="text-xs text-slate-300 mt-3 line-clamp-2">${item.niche}</p>
+            </div>
+            <div class="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">
+              <a href="${profileUrl}" target="_blank" rel="noopener noreferrer" class="text-xs text-indigo-400 hover:underline">
+                Open Profile <i class="fa-solid fa-arrow-up-right-from-square ml-1 text-[10px]"></i>
+              </a>
+              <span class="text-[10px] text-emerald-400 bg-emerald-950/40 border border-emerald-800 px-2 py-0.5 rounded">In CRM</span>
+            </div>
+          </div>
+          `;
+        }).join("");
+      } catch (err) {
+        grid.innerHTML = `<div class="col-span-full text-center text-red-400">Failed to load CRM data: ${err.message}</div>`;
+      }
+    }
+
+    async function updateCrmCount(count) {
+      if (typeof count === "number") {
+        document.getElementById("crmCount").textContent = count;
+        return;
+      }
+      try {
+        const res = await fetch(`${API_BASE}/api/crm`);
+        const data = await res.json();
+        document.getElementById("crmCount").textContent = data.length || 0;
+      } catch (e) {}
+    }
+
+    // Initialize count on load
+    updateCrmCount();
+  </script>
+</body>
+</html>

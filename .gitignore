@@ -1,0 +1,4 @@
+.env
+influencers.db
+__pycache__/
+venv/
